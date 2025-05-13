@@ -119,6 +119,7 @@ const ProfileScreen = () => {
                 <th>ID</th>
                 <th>DATE</th>
                 <th>TOTAL</th>
+                <th>STATUS</th>
                 <th>PAID</th>
                 <th>DELIVERED</th>
                 <th></th>
@@ -130,6 +131,9 @@ const ProfileScreen = () => {
                   <td>{order._id}</td>
                   <td>{order.createdAt.substring(0, 10)}</td>
                   <td>{order.totalPrice}</td>
+                  <td>
+                    {order.status.charAt(0).toUpperCase() + order.status.slice(1).replace('_', ' ')}
+                  </td>
                   <td>
                     {order.isPaid ? (
                       order.paidAt.substring(0, 10)

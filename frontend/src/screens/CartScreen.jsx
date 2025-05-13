@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import {
@@ -20,9 +21,7 @@ const CartScreen = () => {
   const cart = useSelector((state) => state.cart);
   const { cartItems } = cart;
 
-  // NOTE: no need for an async function here as we are not awaiting the
-  // resolution of a Promise
-  const addToCartHandler = (product, qty) => {
+  const addToCartHandler = async (product, qty) => {
     dispatch(addToCart({ ...product, qty }));
   };
 
@@ -56,18 +55,16 @@ const CartScreen = () => {
                   <Col md={2}>${item.price}</Col>
                   <Col md={2}>
                     <Form.Control
-                      as='select'
+                      type='number'
+                      min='1'
+                      max={item.countInStock}
                       value={item.qty}
-                      onChange={(e) =>
-                        addToCartHandler(item, Number(e.target.value))
-                      }
-                    >
-                      {[...Array(item.countInStock).keys()].map((x) => (
-                        <option key={x + 1} value={x + 1}>
-                          {x + 1}
-                        </option>
-                      ))}
-                    </Form.Control>
+                      onChange={(e) => {
+                        const value = Math.max(1, Math.min(item.countInStock, parseInt(e.target.value) || 1));
+                        addToCartHandler(item, value);
+                      }}
+                      disabled={item.countInStock === 0}
+                    />
                   </Col>
                   <Col md={2}>
                     <Button
@@ -79,6 +76,11 @@ const CartScreen = () => {
                     </Button>
                   </Col>
                 </Row>
+                {item.countInStock === 0 && (
+                  <Message variant='danger'>
+                    This item is currently out of stock
+                  </Message>
+                )}
               </ListGroup.Item>
             ))}
           </ListGroup>
@@ -101,7 +103,7 @@ const CartScreen = () => {
               <Button
                 type='button'
                 className='btn-block'
-                disabled={cartItems.length === 0}
+                disabled={cartItems.length === 0 || cartItems.some(item => item.countInStock === 0)}
                 onClick={checkoutHandler}
               >
                 Proceed To Checkout

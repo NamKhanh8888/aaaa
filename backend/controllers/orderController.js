@@ -4,6 +4,30 @@ import Product from '../models/productModel.js';
 import { calcPrices } from '../utils/calcPrices.js';
 import { verifyPayPalPayment, checkIfNewTransaction } from '../utils/paypal.js';
 
+// Helper function to emit order update event
+const emitOrderUpdate = (req, order) => {
+  const io = req.app.get('io');
+  if (io) {
+    io.emit('orderUpdate', {
+      orderId: order._id,
+      status: order.status,
+      isPaid: order.isPaid,
+      isDelivered: order.isDelivered,
+    });
+  }
+};
+
+// Helper function to update product stock
+const updateProductStock = async (orderItems) => {
+  for (const item of orderItems) {
+    const product = await Product.findById(item.product);
+    if (product) {
+      product.countInStock -= item.qty;
+      await product.save();
+    }
+  }
+};
+
 // @desc    Create new order
 // @route   POST /api/orders
 // @access  Private
@@ -14,15 +38,25 @@ const addOrderItems = asyncHandler(async (req, res) => {
     res.status(400);
     throw new Error('No order items');
   } else {
-    // NOTE: here we must assume that the prices from our client are incorrect.
-    // We must only trust the price of the item as it exists in
-    // our DB. This prevents a user paying whatever they want by hacking our client
-    // side code - https://gist.github.com/bushblade/725780e6043eaf59415fbaf6ca7376ff
-
     // get the ordered items from our database
     const itemsFromDB = await Product.find({
       _id: { $in: orderItems.map((x) => x._id) },
     });
+
+    // Check stock availability
+    for (const itemFromClient of orderItems) {
+      const matchingItemFromDB = itemsFromDB.find(
+        (itemFromDB) => itemFromDB._id.toString() === itemFromClient._id
+      );
+      if (!matchingItemFromDB) {
+        res.status(400);
+        throw new Error(`Product ${itemFromClient._id} not found`);
+      }
+      if (matchingItemFromDB.countInStock < itemFromClient.qty) {
+        res.status(400);
+        throw new Error(`Not enough stock for ${matchingItemFromDB.name}. Available: ${matchingItemFromDB.countInStock}`);
+      }
+    }
 
     // map over the order items and use the price from our items from database
     const dbOrderItems = orderItems.map((itemFromClient) => {
@@ -103,8 +137,12 @@ const updateOrderToPaid = asyncHandler(async (req, res) => {
     const paidCorrectAmount = order.totalPrice.toString() === value;
     if (!paidCorrectAmount) throw new Error('Incorrect amount paid');
 
+    // Update product stock
+    await updateProductStock(order.orderItems);
+
     order.isPaid = true;
     order.paidAt = Date.now();
+    order.status = 'paid';
     order.paymentResult = {
       id: req.body.id,
       status: req.body.status,
@@ -113,6 +151,9 @@ const updateOrderToPaid = asyncHandler(async (req, res) => {
     };
 
     const updatedOrder = await order.save();
+    
+    // Emit order update event
+    emitOrderUpdate(req, updatedOrder);
 
     res.json(updatedOrder);
   } else {
@@ -122,7 +163,7 @@ const updateOrderToPaid = asyncHandler(async (req, res) => {
 });
 
 // @desc    Update order to delivered
-// @route   GET /api/orders/:id/deliver
+// @route   PUT /api/orders/:id/deliver
 // @access  Private/Admin
 const updateOrderToDelivered = asyncHandler(async (req, res) => {
   const order = await Order.findById(req.params.id);
@@ -130,9 +171,44 @@ const updateOrderToDelivered = asyncHandler(async (req, res) => {
   if (order) {
     order.isDelivered = true;
     order.deliveredAt = Date.now();
+    order.status = 'delivered';
 
     const updatedOrder = await order.save();
+    
+    // Emit order update event
+    emitOrderUpdate(req, updatedOrder);
 
+    res.json(updatedOrder);
+  } else {
+    res.status(404);
+    throw new Error('Order not found');
+  }
+});
+
+// @desc    Update order status
+// @route   PUT /api/orders/:id/status
+// @access  Private/Admin
+const updateOrderStatus = asyncHandler(async (req, res) => {
+  const { status } = req.body;
+  const order = await Order.findById(req.params.id);
+
+  if (order) {
+    order.status = status;
+    
+    // Update related fields based on status
+    if (status === 'paid') {
+      order.isPaid = true;
+      order.paidAt = Date.now();
+    } else if (status === 'delivered') {
+      order.isDelivered = true;
+      order.deliveredAt = Date.now();
+    }
+
+    const updatedOrder = await order.save();
+    
+    // Emit order update event
+    emitOrderUpdate(req, updatedOrder);
+    
     res.json(updatedOrder);
   } else {
     res.status(404);
@@ -154,5 +230,6 @@ export {
   getOrderById,
   updateOrderToPaid,
   updateOrderToDelivered,
+  updateOrderStatus,
   getOrders,
 };

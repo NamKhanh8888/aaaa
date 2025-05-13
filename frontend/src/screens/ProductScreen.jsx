@@ -80,21 +80,22 @@ const ProductScreen = () => {
         <>
           <Meta title={product.name} description={product.description} />
           <Row>
-            <Col md={6}>
+            <Col md={5}>
               <Image src={product.image} alt={product.name} fluid />
             </Col>
-            <Col md={3}>
+            <Col md={4}>
               <ListGroup variant='flush'>
                 <ListGroup.Item>
                   <h3>{product.name}</h3>
                 </ListGroup.Item>
                 <ListGroup.Item>
-                  <Rating
-                    value={product.rating}
-                    text={`${product.numReviews} reviews`}
-                  />
+                  <div className='d-flex justify-content-between align-items-center'>
+                    <div>Price: ${product.price}</div>
+                    <div className={product.countInStock > 0 ? 'text-success' : 'text-danger'}>
+                      {product.countInStock > 0 ? `In Stock (${product.countInStock})` : 'Out of Stock'}
+                    </div>
+                  </div>
                 </ListGroup.Item>
-                <ListGroup.Item>Price: ${product.price}</ListGroup.Item>
                 <ListGroup.Item>
                   Description: {product.description}
                 </ListGroup.Item>
@@ -115,7 +116,9 @@ const ProductScreen = () => {
                     <Row>
                       <Col>Status:</Col>
                       <Col>
-                        {product.countInStock > 0 ? 'In Stock' : 'Out Of Stock'}
+                        <span className={product.countInStock > 0 ? 'text-success' : 'text-danger'}>
+                          {product.countInStock > 0 ? 'In Stock' : 'Out of Stock'}
+                        </span>
                       </Col>
                     </Row>
                   </ListGroup.Item>
@@ -127,18 +130,15 @@ const ProductScreen = () => {
                         <Col>Qty</Col>
                         <Col>
                           <Form.Control
-                            as='select'
+                            type='number'
+                            min='1'
+                            max={product.countInStock}
                             value={qty}
-                            onChange={(e) => setQty(Number(e.target.value))}
-                          >
-                            {[...Array(product.countInStock).keys()].map(
-                              (x) => (
-                                <option key={x + 1} value={x + 1}>
-                                  {x + 1}
-                                </option>
-                              )
-                            )}
-                          </Form.Control>
+                            onChange={(e) => {
+                              const value = Math.max(1, Math.min(product.countInStock, parseInt(e.target.value) || 1));
+                              setQty(value);
+                            }}
+                          />
                         </Col>
                       </Row>
                     </ListGroup.Item>
